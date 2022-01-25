@@ -1,0 +1,97 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: This template creates creates a Lifecycle Manager Policy
+Parameters:
+  EnvironmentName:
+    Description: An environment name that will be prefixed to resource names
+    Type: String
+  TagKeyVolume:
+    Description: Tag of Key Volume
+    Type: String
+    Default: backupid
+    ConstraintDescription: must be a valid Tag of Key Volume.
+  TagValueVolume:
+    Description: Tag of Value Volume
+    Type: String
+    Default: AUT01
+    ConstraintDescription: must be a valid Tag of Value Volume.
+  CronJob:
+    Description: set cron job
+    Type: String
+    Default: cron(00 00 ? * MON,TUE,WED,THU,FRI,SAT *)
+    ConstraintDescription: set cron job.
+  Intervalbackup:
+    Description: Interval of backup
+    Type: Number
+    MinValue: 1
+    MaxValue: 24
+    Default: 24
+    ConstraintDescription: must be a Interval of backup
+  Retainbackup:
+    Description: Retain of backup
+    Type: Number
+    MinValue: 1
+    MaxValue: 60
+    Default: 1
+    ConstraintDescription: must be a Retain of backup
+Resources:
+  lifecyclePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: "Policy for Lifecycle Management"
+      Path: "/"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action:
+              [
+                "ec2:CreateSnapshote",
+                "ec2:DeleteSnapshot",
+                "ec2:DescribeVolumes",
+                "ec2:DescribeSnapshots",
+              ]
+            Resource: "*"
+          - Effect: "Allow"
+            Action: "ec2:CreateTags"
+            Resource: "arn:aws:ec2:*::snapshot/*"
+  lifecycleRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      ManagedPolicyArns: [!Ref lifecyclePolicy]
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - "sts:AssumeRole"
+            Effect: Allow
+            Principal:
+              Service:
+                - "dlm.amazonaws.com"
+      Path: /
+  DLMLifecyclePolicy:
+     Type: "AWS::DLM::LifecyclePolicy"
+     Properties:
+       Description: "Lifecycle Policy using CloudFormation"
+       ExecutionRoleArn: !GetAtt
+         - lifecycleRole
+         - Arn
+       State: "ENABLED"
+       PolicyDetails:
+         PolicyType: "EBS_SNAPSHOT_MANAGEMENT"
+         ResourceTypes: 
+           - "VOLUME"
+         TargetTags:
+           - Key: !Ref TagKeyVolume
+             Value: !Ref TagValueVolume
+         Schedules:
+           - Name: "Cron SNAPSHOT"
+             CopyTags: true
+             CreateRule:
+               Interval: 0
+               CronExpression: !Ref CronJob
+             RetainRule:
+               Count: 0
+               Interval: !Ref Retainbackup
+               IntervalUnit: "WEEKS"
+       Tags:
+         - Key: Name
+           Value: !Ref EnvironmentName
